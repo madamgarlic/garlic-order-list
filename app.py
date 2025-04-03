@@ -66,7 +66,10 @@ def parse_option(option_text):
     parts = [품종, 형태, 크기]
     parts = [p for p in parts if p]
     if 단위무게:
-        parts.append(f"{round(단위무게 / 1000, 1)}kg")
+        if 단위무게 >= 1000:
+            parts.append(f"{int(단위무게 / 1000)}kg")
+        else:
+            parts.append(f"{단위무게}g")
 
     정제된옵션명 = 업소용_표기 + ' '.join(parts)
     return 정제된옵션명, 포장수량, 단위무게
