@@ -75,12 +75,13 @@ def parse_option(option_text):
         업소용_표기 = '** 업 소 용 ** '
         is_업소용 = True
 
-    # 품종 누락 시 기본값 대서 사용 (마늘류 한정)
     if not 품종 and 카테고리 == '마늘':
         품종 = '대서'
 
     parts = [품종, 형태, 크기, 꼭지]
     parts = [p for p in parts if p]
+    if is_업소용 and 단위무게:
+        parts.append(f"{int(단위무게 / 1000)}kg")
 
     정제된옵션명 = 업소용_표기 + ' '.join(parts)
     return 정제된옵션명.strip(), 포장수량, 단위무게, is_업소용, 카테고리
@@ -111,34 +112,33 @@ if uploaded_files:
         df['수량'] = pd.to_numeric(df['수량'], errors='coerce').fillna(1)
         df['총수량'] = df['수량'] * df['포장수량']
         df['총중량(kg)'] = df['총수량'] * df['단위무게(g)'] / 1000
-        all_rows.append(df[['정제된옵션명', '총수량', '총중량(kg)', '카테고리']])
-
-        df_download = df.copy()
-        df_download[option_column] = df_download['정제된옵션명']
-        buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df_download.drop(columns=['정제된옵션명', '포장수량', '단위무게(g)', '총중량(kg)', '카테고리']).to_excel(writer, index=False)
-        st.download_button(
-            label=f"⬇ {file.name.replace('.xlsx','')}_정제.xlsx 다운로드",
-            data=buffer.getvalue(),
-            file_name=f"{file.name.replace('.xlsx','')}_정제.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        all_rows.append(df[['정제된옵션명', '총수량', '총중량(kg)', '카테고리', 'is_업소용']])
 
     if all_rows:
         df_all = pd.concat(all_rows, ignore_index=True)
 
         summaries = []
-        for category in ['마늘', '마늘쫑', '닭발', '빠삭이']:
-            group_col = '총중량(kg)' if category in ['마늘', '마늘쫑'] else '총수량'
-            grouped = df_all[df_all['카테고리'] == category].groupby('정제된옵션명', as_index=False).agg({
-                group_col: 'sum'
-            })
-            grouped['단위'] = get_단위표시(category)
-            grouped['수량'] = grouped[group_col].round(2).astype(int)
-            summaries.append(grouped[['정제된옵션명', '단위', '수량']])
+        for idx, row in df_all.iterrows():
+            옵션 = row['정제된옵션명']
+            카테고리 = row['카테고리']
+            is_업소용 = row['is_업소용']
+            단위 = get_단위표시(카테고리)
 
-        summary_df = pd.concat(summaries, ignore_index=True)
+            if is_업소용:
+                key = (옵션, 단위)
+                value = row['총수량']
+            elif 카테고리 in ['마늘', '마늘쫑']:
+                key = (옵션, 단위)
+                value = row['총중량(kg)']
+            else:
+                key = (옵션, 단위)
+                value = row['총수량']
+
+            summaries.append((*key, value))
+
+        summary_df = pd.DataFrame(summaries, columns=['정제된 옵션명', '단위', '수량'])
+        summary_df = summary_df.groupby(['정제된 옵션명', '단위'], as_index=False).agg({'수량': 'sum'})
+        summary_df['수량'] = summary_df['수량'].round(2).astype(int)
 
         st.markdown("### ✅ 최종 패킹리스트")
         st.dataframe(summary_df)
