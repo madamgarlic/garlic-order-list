@@ -3,124 +3,100 @@ import streamlit as st
 import pandas as pd
 import re
 import io
+from datetime import datetime
 
-st.set_page_config(page_title="발주서 옵션 자동 정제 시스템", layout="wide")
-st.title("📦 발주서 옵션 자동 정제 시스템")
+st.set_page_config(page_title="마늘귀신 자동 패킹리스트", layout="wide")
+st.title("🧄 마늘귀신 자동 패킹리스트 시스템")
 
-uploaded_files = st.file_uploader("발주서를 업로드하세요 (xlsx 형식)", type=["xlsx"], accept_multiple_files=True)
+uploaded_files = st.file_uploader("발주서 파일(.xlsx)을 업로드하세요", type=["xlsx"], accept_multiple_files=True)
 
-# 키워드 정의
-품종_키워드 = ['육쪽', '대서']
-형태_키워드 = ['다진마늘', '깐마늘', '통마늘', '무뼈닭발', '마늘빠삭이']
-카테고리_키워드 = ['무뼈닭발', '마늘빠삭이', '마늘쫑']
-크기_키워드 = ['대', '중', '소']
-업소용_키워드 = ['업소용', '영업용', '업용', '대용량']
+# 기준 키워드
+품종_키워드 = ["육쪽", "대서"]
+형태_키워드 = ["다진마늘", "깐마늘", "통마늘", "무뼈닭발", "마늘빠삭이"]
+크기_키워드 = ["특", "대", "중", "소"]
+꼭지_키워드 = ["꼭지제거", "꼭지포함"]
+업소용_키워드 = ["업소용", "영업용", "업용", "대용량"]
 
-all_rows = []
+카테고리_정의 = {
+    "마늘": ["다진마늘", "깐마늘", "통마늘"],
+    "마늘쫑": ["마늘쫑"],
+    "무뼈닭발": ["무뼈닭발"],
+    "마늘빠삭이": ["마늘빠삭이"]
+}
 
-def parse_option(option_text):
-    if pd.isna(option_text):
-        return None, 1, None, None, None, None
+def detect_category(text):
+    for cat, items in 카테고리_정의.items():
+        for item in items:
+            if item in text:
+                return cat
+    return "기타"
 
-    text = option_text.lower()
-    품종 = 형태 = 크기 = 꼭지 = None
-    단위무게 = None
-    포장수량 = 1
-    업소용_표기 = ''
-    is_업소용 = False
-    카테고리 = '기타'
+def parse_option(option):
+    if pd.isna(option):
+        return None, 1, 0, None, None, False
+    text = option.lower()
+    품종 = next((p for p in 품종_키워드 if p in text), None)
+    형태 = next((f for f in 형태_키워드 if f in text), None)
+    크기 = next((k for k in 크기_키워드 if re.search(r'\b' + re.escape(k) + r'\b', text)), None)
+    꼭지 = next((k for k in 꼭지_키워드 if k in text), None)
+    is_업소용 = any(k in text for k in 업소용_키워드)
+    category = detect_category(text)
 
-    for kw in 품종_키워드:
-        if kw in text:
-            품종 = kw
-            break
-    for kw in 형태_키워드:
-        if kw in text:
-            형태 = kw
-            break
-    for kw in 카테고리_키워드:
-        if kw in text:
-            카테고리 = kw
-            break
-    if 카테고리 == '기타' and 형태 in ['다진마늘', '깐마늘', '통마늘']:
-        카테고리 = '마늘'
+    if not 품종 and category == "마늘":
+        품종 = "대서"
 
-    for kw in 크기_키워드:
-        if re.search(r'\b' + re.escape(kw) + r'\b', text):
-            크기 = kw
-            break
-    for kw in ['꼭지제거', '꼭지포함']:
-        if kw in text:
-            꼭지 = kw
-            break
-
+    # 무게
     match = re.search(r'(\d+)\s*(kg|g)', text)
     if match:
-        weight = int(match.group(1))
-        unit = match.group(2)
-        단위무게 = weight * 1000 if unit == 'kg' else weight
+        무게 = int(match.group(1))
+        단위 = match.group(2)
+        단위무게 = 무게 * 1000 if 단위 == "kg" else 무게
     else:
-        if '무뼈닭발' in text:
-            단위무게 = 200
-        elif '마늘빠삭이' in text:
-            단위무게 = 350
+        단위무게 = 200 if category == "무뼈닭발" else 350 if category == "마늘빠삭이" else 1000
 
-    if '마늘빠삭이' in text and re.search(r'x\s*10(개|입|팩)', text):
-        포장수량 = 1
-    else:
-        pack_match = re.search(r'[xX×]\s*(\d+)', text)
-        if pack_match:
-            포장수량 = int(pack_match.group(1))
-
-    if any(kw in text for kw in 업소용_키워드):
-        업소용_표기 = '** 업 소 용 ** '
-        is_업소용 = True
-
-    if not 품종 and 카테고리 == '마늘':
-        품종 = '대서'
+    # 포장수량
+    pack_match = re.search(r'[x×]\s*(\d+)', text)
+    포장수량 = int(pack_match.group(1)) if pack_match else 1
 
     parts = [품종, 형태, 크기, 꼭지]
     parts = [p for p in parts if p]
-    if is_업소용 and 단위무게:
+    if is_업소용 and category in ["마늘", "마늘쫑"]:
         parts.append(f"{int(단위무게 / 1000)}kg")
+    정제명 = ("** 업 소 용 ** " if is_업소용 else "") + " ".join(parts)
+    return 정제명.strip(), 포장수량, 단위무게, category, 형태, is_업소용
 
-    정제된옵션명 = 업소용_표기 + ' '.join(parts)
-    return 정제된옵션명.strip(), 포장수량, 단위무게, is_업소용, 카테고리
+def 단위표기(category):
+    return {
+        "마늘": "kg",
+        "마늘쫑": "kg",
+        "무뼈닭발": "팩 (200g)",
+        "마늘빠삭이": "박스 (10개입)"
+    }.get(category, "단위")
 
-def get_단위표시(카테고리):
-    if 카테고리 in ['마늘', '마늘쫑']:
-        return 'kg'
-    elif 카테고리 == '무뼈닭발':
-        return '팩 (200g)'
-    elif 카테고리 == '마늘빠삭이':
-        return '박스 (10개입)'
-    return '단위'
+all_data = []
 
 if uploaded_files:
-    st.markdown("### 📁 개별 정제 발주서 다운로드 + 최종 패킹리스트 합산")
+    st.subheader("📁 개별 정제 발주서 다운로드")
 
     for file in uploaded_files:
-        st.subheader(f"📄 {file.name}")
         df = pd.read_excel(file)
-
-        옵션후보 = ['옵션', '옵션명', '옵션정보', '옵션내용', '상세옵션']
-        option_column = next((col for col in df.columns if any(k in str(col).lower() for k in 옵션후보)), None)
-        if not option_column:
-            st.warning(f"❗ 옵션 컬럼을 찾을 수 없습니다: {file.name}")
+        옵션컬럼 = next((col for col in df.columns if any(k in str(col).lower() for k in ["옵션", "옵션명", "옵션정보", "옵션내용", "상세옵션"])), None)
+        if not 옵션컬럼:
+            st.warning(f"{file.name}에서 옵션 컬럼을 찾을 수 없습니다.")
             continue
 
-        df['정제된옵션명'], df['포장수량'], df['단위무게(g)'], df['is_업소용'], df['카테고리'] = zip(*df[option_column].map(parse_option))
-        df['수량'] = pd.to_numeric(df['수량'], errors='coerce').fillna(1)
-        df['총수량'] = df['수량'] * df['포장수량']
-        df['총중량(kg)'] = df['총수량'] * df['단위무게(g)'] / 1000
+        df["정제된옵션명"], df["포장수량"], df["단위무게(g)"], df["카테고리"], df["형태"], df["is_업소용"] = zip(*df[옵션컬럼].map(parse_option))
+        df["수량"] = pd.to_numeric(df.get("수량", 1), errors="coerce").fillna(1)
+        df["총수량"] = df["수량"] * df["포장수량"]
+        df["총중량(kg)"] = df["총수량"] * df["단위무게(g)"] / 1000
 
-        all_rows.append(df[['정제된옵션명', '총수량', '총중량(kg)', '카테고리', 'is_업소용']])
+        all_data.append(df[["정제된옵션명", "총수량", "총중량(kg)", "카테고리", "is_업소용"]])
 
-        df_download = df.copy()
-        df_download[option_column] = df_download['정제된옵션명']
+        df_export = df.copy()
+        df_export[옵션컬럼] = df_export["정제된옵션명"]
         buffer = io.BytesIO()
-        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
-            df_download.to_excel(writer, index=False)
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df_export.to_excel(writer, index=False)
         st.download_button(
             label=f"⬇ {file.name.replace('.xlsx','')}_정제.xlsx 다운로드",
             data=buffer.getvalue(),
@@ -128,40 +104,32 @@ if uploaded_files:
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-    if all_rows:
-        df_all = pd.concat(all_rows, ignore_index=True)
+    if all_data:
+        st.subheader("📦 최종 패킹리스트")
+        df_all = pd.concat(all_data, ignore_index=True)
 
-        summaries = []
-        for idx, row in df_all.iterrows():
-            옵션 = row['정제된옵션명']
-            카테고리 = row['카테고리']
-            is_업소용 = row['is_업소용']
-            단위 = get_단위표시(카테고리)
-
+        output = []
+        grouped = df_all.groupby(["정제된옵션명", "카테고리", "is_업소용"])
+        for (옵션, cat, is_업소용), group in grouped:
             if is_업소용:
-                key = (옵션, 단위)
-                value = row['총수량']
-            elif 카테고리 in ['마늘', '마늘쫑']:
-                key = (옵션, 단위)
-                value = row['총중량(kg)']
+                단위 = "kg"
+                수량 = group["총수량"].sum()
+            elif cat in ["마늘", "마늘쫑"]:
+                단위 = "kg"
+                수량 = group["총중량(kg)"].sum()
             else:
-                key = (옵션, 단위)
-                value = row['총수량']
+                단위 = 단위표기(cat)
+                수량 = group["총수량"].sum()
+            output.append([옵션, 단위, round(수량)])
 
-            summaries.append((*key, value))
-
-        summary_df = pd.DataFrame(summaries, columns=['정제된 옵션명', '단위', '수량'])
-        summary_df = summary_df.groupby(['정제된 옵션명', '단위'], as_index=False).agg({'수량': 'sum'})
-        summary_df['수량'] = summary_df['수량'].round(2).astype(int)
-
-        st.markdown("### ✅ 최종 패킹리스트")
-        st.dataframe(summary_df)
+        df_out = pd.DataFrame(output, columns=["정제된 옵션명", "단위", "수량"])
+        st.dataframe(df_out)
 
         buffer2 = io.BytesIO()
-        with pd.ExcelWriter(buffer2, engine='openpyxl') as writer:
-            summary_df.to_excel(writer, index=False, sheet_name='패킹리스트')
+        with pd.ExcelWriter(buffer2, engine="openpyxl") as writer:
+            df_out.to_excel(writer, index=False, sheet_name="패킹리스트")
         st.download_button(
-            label="⬇ 최종 패킹리스트 다운로드",
+            label="⬇ 패킹리스트_합산.xlsx 다운로드",
             data=buffer2.getvalue(),
             file_name="패킹리스트_합산.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
