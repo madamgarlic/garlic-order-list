@@ -4,8 +4,8 @@ import pandas as pd
 import re
 import io
 
-st.set_page_config(page_title="발주서 옵션 자동 정제 시스템", layout="wide")
-st.title("📦 발주서 옵션 자동 정제 시스템")
+st.set_page_config(page_title="마늘귀신 발주서 합산 시스템", layout="wide")
+st.title("📦 마늘귀신 발주서 합산 시스템")
 
 uploaded_files = st.file_uploader("발주서를 업로드하세요 (xlsx 형식)", type=["xlsx"], accept_multiple_files=True)
 
