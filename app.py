@@ -11,8 +11,8 @@ uploaded_files = st.file_uploader("발주서를 업로드하세요 (xlsx 형식)
 
 # 키워드 정의
 품종_키워드 = ['육쪽', '대서']
-형태_키워드 = ['다진마늘', '깐마늘', '통마늘']
-카테고리_키워드 = ['닭발', '빠삭이', '마늘쫑']
+형태_키워드 = ['다진마늘', '깐마늘', '통마늘', '무뼈닭발', '마늘빠삭이']
+카테고리_키워드 = ['무뼈닭발', '마늘빠삭이', '마늘쫑']
 크기_키워드 = ['대', '중', '소']
 업소용_키워드 = ['업소용', '영업용', '업용', '대용량']
 
@@ -34,16 +34,17 @@ def parse_option(option_text):
         if kw in text:
             품종 = kw
             break
-    for kw in 형태_키워드 + 카테고리_키워드:
+    for kw in 형태_키워드:
         if kw in text:
             형태 = kw
-            if kw in ['빠삭이', '닭발']:
-                카테고리 = kw
-            elif kw == '마늘쫑':
-                카테고리 = '마늘쫑'
-            else:
-                카테고리 = '마늘'
             break
+    for kw in 카테고리_키워드:
+        if kw in text:
+            카테고리 = kw
+            break
+    if 카테고리 == '기타' and 형태 in ['다진마늘', '깐마늘', '통마늘']:
+        카테고리 = '마늘'
+
     for kw in 크기_키워드:
         if re.search(r'\b' + re.escape(kw) + r'\b', text):
             크기 = kw
@@ -59,12 +60,12 @@ def parse_option(option_text):
         unit = match.group(2)
         단위무게 = weight * 1000 if unit == 'kg' else weight
     else:
-        if '닭발' in text:
+        if '무뼈닭발' in text:
             단위무게 = 200
-        elif '빠삭이' in text:
+        elif '마늘빠삭이' in text:
             단위무게 = 350
 
-    if '빠삭이' in text and re.search(r'x\s*10(개|입|팩)', text):
+    if '마늘빠삭이' in text and re.search(r'x\s*10(개|입|팩)', text):
         포장수량 = 1
     else:
         pack_match = re.search(r'[xX×]\s*(\d+)', text)
@@ -89,9 +90,9 @@ def parse_option(option_text):
 def get_단위표시(카테고리):
     if 카테고리 in ['마늘', '마늘쫑']:
         return 'kg'
-    elif 카테고리 == '닭발':
+    elif 카테고리 == '무뼈닭발':
         return '팩 (200g)'
-    elif 카테고리 == '빠삭이':
+    elif 카테고리 == '마늘빠삭이':
         return '박스 (10개입)'
     return '단위'
 
@@ -112,7 +113,20 @@ if uploaded_files:
         df['수량'] = pd.to_numeric(df['수량'], errors='coerce').fillna(1)
         df['총수량'] = df['수량'] * df['포장수량']
         df['총중량(kg)'] = df['총수량'] * df['단위무게(g)'] / 1000
+
         all_rows.append(df[['정제된옵션명', '총수량', '총중량(kg)', '카테고리', 'is_업소용']])
+
+        df_download = df.copy()
+        df_download[option_column] = df_download['정제된옵션명']
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine='openpyxl') as writer:
+            df_download.to_excel(writer, index=False)
+        st.download_button(
+            label=f"⬇ {file.name.replace('.xlsx','')}_정제.xlsx 다운로드",
+            data=buffer.getvalue(),
+            file_name=f"{file.name.replace('.xlsx','')}_정제.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
     if all_rows:
         df_all = pd.concat(all_rows, ignore_index=True)
