@@ -89,3 +89,67 @@ def parse_option(option):
     정제명 = ("** 업 소 용 ** " if is_업소용 else "") + " ".join(parts)
 
     return 정제명.strip(), 포장수량, 단위무게, category, is_업소용
+
+uploaded_files = st.file_uploader("발주서 파일(.xlsx)을 업로드하세요", type=["xlsx"], accept_multiple_files=True)
+
+정제_전체 = []
+
+if uploaded_files:
+    for file in uploaded_files:
+        df = pd.read_excel(file)
+        옵션컬럼 = next((col for col in df.columns if "옵션" in col.lower()), None)
+        if not 옵션컬럼:
+            st.warning(f"{file.name}에서 옵션 컬럼을 찾을 수 없습니다.")
+            continue
+
+        df["정제된옵션명"], df["포장수량"], df["단위무게(g)"], df["카테고리"], df["is_업소용"] = zip(*df[옵션컬럼].map(parse_option))
+        df["수량"] = pd.to_numeric(df.get("수량", 1), errors="coerce").fillna(1)
+        df["총수량"] = df["수량"] * df["포장수량"]
+        df["총중량(kg)"] = df["총수량"] * df["단위무게(g)"] / 1000
+
+        정제_전체.append(df[["정제된옵션명", "단위무게(g)", "총수량", "총중량(kg)", "카테고리", "is_업소용"]])
+
+        df_export = df.copy()
+        df_export[옵션컬럼] = df_export["정제된옵션명"]
+        buffer = io.BytesIO()
+        with pd.ExcelWriter(buffer, engine="openpyxl") as writer:
+            df_export.to_excel(writer, index=False)
+        st.download_button(
+            label=f"⬇ {file.name.replace('.xlsx','')}_정제.xlsx 다운로드",
+            data=buffer.getvalue(),
+            file_name=f"{file.name.replace('.xlsx','')}_정제.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
+    if 정제_전체:
+        st.markdown("### 📦 최종 패킹리스트 (합산)")
+        df_all = pd.concat(정제_전체, ignore_index=True)
+        grouped = {}
+
+        for _, row in df_all.iterrows():
+            base_opt = " ".join(row["정제된옵션명"].split()[:-1]) if not row["is_업소용"] and row["카테고리"] in ["마늘", "마늘쫑"] else row["정제된옵션명"]
+            단위 = 단위표기.get(row["카테고리"], "단위")
+
+            key = (base_opt, 단위)
+            if row["is_업소용"]:
+                grouped[key] = grouped.get(key, 0) + row["총수량"]
+            elif row["카테고리"] in ["마늘", "마늘쫑"]:
+                grouped[key] = grouped.get(key, 0) + row["총중량(kg)"]
+            else:
+                grouped[key] = grouped.get(key, 0) + row["총수량"]
+
+        df_summary = pd.DataFrame(
+            [(opt, unit, round(qty)) for (opt, unit), qty in grouped.items()],
+            columns=["정제된 옵션명", "단위", "수량"]
+        )
+        st.dataframe(df_summary)
+
+        buffer2 = io.BytesIO()
+        with pd.ExcelWriter(buffer2, engine="openpyxl") as writer:
+            df_summary.to_excel(writer, index=False, sheet_name="패킹리스트")
+        st.download_button(
+            label="⬇ 패킹리스트_합산.xlsx 다운로드",
+            data=buffer2.getvalue(),
+            file_name="패킹리스트_합산.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
