@@ -4,8 +4,8 @@ import pandas as pd
 import re
 import io
 
-st.set_page_config(page_title="마늘귀신 자동 패킹리스트 시스템 v3.3", layout="wide")
-st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v3.3")
+st.set_page_config(page_title="마늘귀신 자동 패킹리스트 시스템 v3.5", layout="wide")
+st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v3.5")
 
 설정 = {
     "품종": ["육쪽", "대서"],
@@ -29,18 +29,11 @@ st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v3.3")
     "마늘빠삭이": "박스 (10개입)"
 }
 
-def detect_category(text):
-    for cat, items in 카테고리_정의.items():
-        for item in items:
-            if item in text:
-                return cat
-    return "기타"
-
 def parse_option(option):
     if pd.isna(option):
         return None, 1, 0, None, None, False
 
-    original_text = str(option)
+    original_text = str(option).strip()
 
     if ":" in original_text:
         text = original_text.rsplit(":", 1)[-1].strip().lower()
@@ -48,13 +41,20 @@ def parse_option(option):
         text = original_text.lower()
 
     if "/" in text:
-        text = text.split("/", 1)[0].strip()
+        slash_part = text.split("/")[-1]
+        if ":" in slash_part:
+            text = slash_part.rsplit(":", 1)[-1].strip()
+        else:
+            text = text.split("/", 1)[0].strip()
 
     text = text.replace(" ", "")
 
     품종 = next((p for p in 설정["품종"] if p in text), None)
     형태 = next((f for f in 설정["형태"] if f in text), None)
-    크기 = next((k for k in 설정["크기"] if k in text), None)
+
+    # ✅ 크기는 괄호 포함된 경우도 포함하여 탐색
+    크기 = next((k for k in 설정["크기"] if k in text or f"({k})" in original_text), None)
+
     꼭지 = next((k for k in 설정["꼭지"] if k in text), None)
     is_업소용 = any(k in text for k in 설정["업소용"])
     category = detect_category(text)
@@ -85,6 +85,13 @@ def parse_option(option):
     정제명 = ("** 업 소 용 ** " if is_업소용 else "") + " ".join(parts)
 
     return 정제명.strip(), 포장수량, 단위무게, category, is_업소용
+
+def detect_category(text):
+    for cat, items in 카테고리_정의.items():
+        for item in items:
+            if item in text:
+                return cat
+    return "기타"
 
 uploaded_files = st.file_uploader("발주서 파일(.xlsx)을 업로드하세요", type=["xlsx"], accept_multiple_files=True)
 
@@ -120,13 +127,10 @@ if uploaded_files:
     if 정제_전체:
         st.markdown("### 📦 최종 패킹리스트 (합산)")
         df_all = pd.concat(정제_전체, ignore_index=True)
-
-        # ✅ 정제된 옵션명이 None 또는 빈 문자열인 행은 제거
         df_all = df_all[df_all["정제된옵션명"].notna()]
         df_all = df_all[df_all["정제된옵션명"] != ""]
 
         grouped = {}
-
         for _, row in df_all.iterrows():
             base_opt = " ".join(row["정제된옵션명"].split()[:-1]) if not row["is_업소용"] and row["카테고리"] in ["마늘", "마늘쫑"] else row["정제된옵션명"]
             단위 = 단위표기.get(row["카테고리"], "단위")
