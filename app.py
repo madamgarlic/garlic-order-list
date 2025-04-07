@@ -4,8 +4,8 @@ import pandas as pd
 import re
 import io
 
-st.set_page_config(page_title="마늘귀신 자동 패킹리스트 시스템 v3.2", layout="wide")
-st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v3.2")
+st.set_page_config(page_title="마늘귀신 자동 패킹리스트 시스템 v3.3", layout="wide")
+st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v3.3")
 
 설정 = {
     "품종": ["육쪽", "대서"],
@@ -120,16 +120,17 @@ if uploaded_files:
     if 정제_전체:
         st.markdown("### 📦 최종 패킹리스트 (합산)")
         df_all = pd.concat(정제_전체, ignore_index=True)
+
+        # ✅ 정제된 옵션명이 None 또는 빈 문자열인 행은 제거
+        df_all = df_all[df_all["정제된옵션명"].notna()]
+        df_all = df_all[df_all["정제된옵션명"] != ""]
+
         grouped = {}
 
         for _, row in df_all.iterrows():
-            if not row["정제된옵션명"]:
-                continue
-
             base_opt = " ".join(row["정제된옵션명"].split()[:-1]) if not row["is_업소용"] and row["카테고리"] in ["마늘", "마늘쫑"] else row["정제된옵션명"]
             단위 = 단위표기.get(row["카테고리"], "단위")
 
-            # 🎯 마늘빠삭이는 수량만 사용
             if row["카테고리"] == "마늘빠삭이":
                 qty = row["수량"]
             elif row["is_업소용"]:
@@ -146,7 +147,6 @@ if uploaded_files:
             [(opt, unit, round(qty)) for (opt, unit), qty in grouped.items()],
             columns=["정제된 옵션명", "단위", "수량"]
         )
-        df_summary = df_summary.iloc[1:]
 
         st.dataframe(df_summary)
 
