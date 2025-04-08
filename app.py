@@ -4,8 +4,8 @@ import pandas as pd
 import re
 import io
 
-st.set_page_config(page_title="마늘귀신 자동 패킹리스트 시스템 v3.7", layout="wide")
-st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v3.7")
+st.set_page_config(page_title="마늘귀신 자동 패킹리스트 시스템 v3.9", layout="wide")
+st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v3.9")
 
 설정 = {
     "품종": ["육쪽", "대서"],
@@ -18,7 +18,7 @@ st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v3.7")
 카테고리_정의 = {
     "마늘": ["다진마늘", "깐마늘", "통마늘"],
     "마늘쫑": ["마늘쫑"],
-    "무뼈닭발": ["무뼈닭발"],
+    "무뼈닭발": ["무뼈닭발", "무뼈 닭발", "닭발"],
     "마늘빠삭이": ["마늘빠삭이"]
 }
 
@@ -65,6 +65,7 @@ def parse_option(option):
         parts = [품종, 형태, 크기, 꼭지]
         parts = [p for p in parts if p]
 
+    # 무게 추출 (마지막)
     matches = re.findall(r'(\d+)\s*(kg|g)', original_text, re.IGNORECASE)
     if matches:
         무게값, 단위 = matches[-1]
@@ -74,8 +75,19 @@ def parse_option(option):
         단위무게 = 200 if category == "무뼈닭발" else 350 if category == "마늘빠삭이" else 1000
 
     총중량기반수량 = None
-    if category == "무뼈닭발" and matches:
-        총중량기반수량 = (무게 * 1000 if 단위.lower() == "kg" else 무게) / 200
+    팩기반수량 = None
+
+    if category == "무뼈닭발":
+        # 1. 총중량 기반 수량 계산
+        if matches:
+            총중량 = int(matches[-1][0]) * (1000 if matches[-1][1].lower() == "kg" else 1)
+            if "총" in original_text or "(총" in original_text:
+                총중량기반수량 = 총중량 / 200
+
+        # 2. "4팩" 같은 팩 수량 직접 추출
+        pack_count_match = re.search(r'(\d+)\s*[팩]', original_text, re.IGNORECASE)
+        if pack_count_match:
+            팩기반수량 = int(pack_count_match.group(1))
 
     pack_match = re.search(r'[x×]\s*(\d+)', original_text)
     포장수량 = int(pack_match.group(1)) if pack_match else 1
@@ -85,7 +97,7 @@ def parse_option(option):
 
     정제명 = ("** 업 소 용 ** " if is_업소용 else "") + " ".join(parts)
 
-    return 정제명.strip(), 포장수량, 단위무게, category, is_업소용, 총중량기반수량
+    return 정제명.strip(), 포장수량, 단위무게, category, is_업소용, 총중량기반수량, 팩기반수량
 
 def detect_category(text):
     for cat, items in 카테고리_정의.items():
@@ -107,13 +119,16 @@ if uploaded_files:
             continue
 
         result = df[옵션컬럼].map(parse_option)
-        df["정제된옵션명"], df["포장수량"], df["단위무게(g)"], df["카테고리"], df["is_업소용"], df["총중량기반수량"] = zip(*result)
+        df["정제된옵션명"], df["포장수량"], df["단위무게(g)"], df["카테고리"], df["is_업소용"], df["총중량기반수량"], df["팩기반수량"] = zip(*result)
 
         df["수량"] = pd.to_numeric(df.get("수량", 1), errors="coerce").fillna(1)
-        df["총수량"] = df["수량"] * df["포장수량"]
-        df["총중량(kg)"] = df["총수량"] * df["단위무게(g)"] / 1000
 
+        # ✅ 무뼈닭발 수량 계산 우선순위: 팩기반 → 총중량기반 → 기본
+        df["총수량"] = df["수량"] * df["포장수량"]  # 기본값
         df.loc[(df["카테고리"] == "무뼈닭발") & df["총중량기반수량"].notna(), "총수량"] = df["수량"] * df["총중량기반수량"]
+        df.loc[(df["카테고리"] == "무뼈닭발") & df["팩기반수량"].notna(), "총수량"] = df["수량"] * df["팩기반수량"]
+
+        df["총중량(kg)"] = df["총수량"] * df["단위무게(g)"] / 1000
 
         정제_전체.append(df[["정제된옵션명", "수량", "총수량", "총중량(kg)", "카테고리", "is_업소용"]])
 
