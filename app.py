@@ -162,7 +162,7 @@ if uploaded_files:
 
         df_summary = pd.DataFrame(
             [(opt, unit, round(qty)) for (opt, unit), qty in grouped.items()],
-            columns=["단위", "정제된 옵션명", "수량"]
+            columns=["정제된 옵션명", "단위", "수량"]
         )
 
         st.dataframe(df_summary)
