@@ -50,35 +50,70 @@ def extract_weight(text):
         return int(value) * 1000 if unit == 'kg' else int(value)
     return 1000
 
-        if 꼭지 == "꼭지포함":
-            꼭지 = "* 꼭 지 포 함 *"
+def parse_option(option):
+    if pd.isna(option):
+        return None, 1, 1000, None, None, None
 
-        if category == "무뼈닭발":
-            total_weight = extract_weight(original_text)
-            count_match = re.search(r'(\d+)\s*팩', original_text)
-            if count_match:
-                pack_count = int(count_match.group(1))
-            else:
-                pack_count = total_weight // 200
-            정제명 = f"무뼈닭발 {pack_count}팩"
-            패킹표기 = "무뼈닭발"
-        elif category == "마늘빠삭이":
-            count_match = re.search(r'(\d+)\s*개입', original_text)
-            if not count_match:
-                count_match = re.search(r'\(\s*\d+\s*g\s*[x×]\s*(\d+)\s*개?\s*\)', original_text.lower())
-            if count_match:
-                count = count_match.group(1) + "개입"
-            else:
-                count = "10개입"
-            정제명 = f"마늘빠삭이 {count}".strip()
-            패킹표기 = "마늘빠삭이"
+    original_text = str(option).strip()
+    text = original_text.lower().replace(" ", "")
+    품종 = next((p for p in 설정["품종"] if p in text), None)
+    형태 = next((f for f in 설정["형태"] if f in text), None)
+    크기 = next((k for k in 설정["크기"] if k in text), None)
+    꼭지 = next((k for k in 설정["꼭지"] if k in text), None)
+    is_업소용 = any(k in text for k in 설정["업소용"])
+    category = detect_category(text)
+
+    if 꼭지 == "꼭지포함":
+        꼭지 = "* 꼭 지 포 함 *"
+
+    단위무게 = extract_weight(original_text)
+    포장수량_match = re.search(r'[x×]\s*(\d+)', original_text)
+    포장수량 = int(포장수량_match.group(1)) if 포장수량_match else 1
+
+    if category == "무뼈닭발":
+        total_weight = extract_weight(original_text)
+        count_match = re.search(r'(\d+)\s*팩', original_text)
+        if count_match:
+            pack_count = int(count_match.group(1))
         else:
-            parts = [품종, 형태, None if 형태 == "다진마늘" else 크기, 꼭지, f"{int(단위무게/1000)}kg"]
-            정제명 = " ".join([p for p in parts if p])
-            패킹표기 = 정제명
+            pack_count = total_weight // 200
+        정제명 = f"무뼈닭발 {pack_count}팩"
+        패킹표기 = "무뼈닭발"
 
-        if is_업소용:
-            정제명 = "** 업 소 용 ** " + 정제명
+    elif category == "마늘빠삭이":
+        count_match = re.search(r'(\d+)\s*개입', original_text)
+        if not count_match:
+            count_match = re.search(r'\(\s*\d+\s*g\s*[x×]\s*(\d+)\s*개?\s*\)', original_text.lower())
+        if count_match:
+            count = count_match.group(1) + "개입"
+        else:
+            count = "10개입"
+        정제명 = f"마늘빠삭이 {count}".strip()
+        패킹표기 = "마늘빠삭이"
+
+    else:
+        parts = [품종, 형태, None if 형태 == "다진마늘" else 크기, 꼭지, f"{int(단위무게/1000)}kg"]
+        정제명 = " ".join([p for p in parts if p])
+        패킹표기 = 정제명
+
+    if is_업소용:
+        정제명 = "** 업 소 용 ** " + 정제명
+
+    return 정제명, 포장수량, 단위무게, category, is_업소용, 패킹표기
+
+    original_text = str(option).strip()
+    text = original_text.lower().replace(" ", "")
+    품종 = next((p for p in 설정["품종"] if p in text), None)
+    형태 = next((f for f in 설정["형태"] if f in text), None)
+    크기 = next((k for k in 설정["크기"] if k in text), None)
+    꼭지 = next((k for k in 설정["꼭지"] if k in text), None)
+    is_업소용 = any(k in text for k in 설정["업소용"])
+    category = detect_category(text)
+
+    단위무게 = extract_weight(original_text)
+    포장수량_match = re.search(r'[x×]\s*(\d+)', original_text)
+    포장수량 = int(포장수량_match.group(1)) if 포장수량_match else 1
+
     if category == "무뼈닭발":
         total_weight = extract_weight(original_text)
         count_match = re.search(r'(\d+)\s*팩', original_text)
