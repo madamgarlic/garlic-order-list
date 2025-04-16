@@ -4,8 +4,8 @@ import pandas as pd
 import re
 import io
 
-st.set_page_config(page_title="🧄 마늘귀신 자동 패킹리스트 시스템 v6.1", layout="wide")
-st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v6.1")
+st.set_page_config(page_title="🧄 마늘귀신 자동 패킹리스트 시스템 v6.2", layout="wide")
+st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v6.2")
 
 uploaded_files = st.file_uploader("📤 발주서를 업로드하세요 (.xlsx)", type=["xlsx"], accept_multiple_files=True)
 
@@ -30,18 +30,18 @@ def extract_weight(text):
         first_match = re.search(r'(\d+(\.\d+)?)(kg|g)', main_text, flags=re.IGNORECASE)
         if first_match:
             value, unit = first_match.groups()[0], first_match.groups()[-1]
-            return float(value) if unit.lower() == "kg" else float(value) / 1000
+            return f"{int(float(value))}kg" if unit.lower() == "kg" else f"{int(float(value)/1000)}kg"
         total_match = re.search(r'총\s*(\d+(\.\d+)?)(kg|g)', text, flags=re.IGNORECASE)
         if total_match:
             value, unit = total_match.groups()[0], total_match.groups()[-1]
-            return float(value) if unit.lower() == "kg" else float(value) / 1000
+            return f"{int(float(value))}kg" if unit.lower() == "kg" else f"{int(float(value)/1000)}kg"
         weights = re.findall(r'(\d+(?:\.\d+)?)(kg|g)', text, flags=re.IGNORECASE)
         if weights:
             value, unit = weights[-1]
-            return float(value) if unit.lower() == "kg" else float(value) / 1000
+            return f"{int(float(value))}kg" if unit.lower() == "kg" else f"{int(float(value)/1000)}kg"
     except:
-        return 0
-    return 0
+        return ""
+    return ""
 
 def extract_unit(option):
     if "무뼈닭발" in option:
@@ -64,9 +64,10 @@ def refine_option(option):
     else:
         품종 = next((k for k in 품종_키워드 if k in option), None)
         형태 = next((k for k in 형태_키워드 if k in option), None)
-        크기 = next((k for k in 크기_키워드 if re.search(rf"\({k}\)", option)), None) if not is_dajin else None
+        크기 = next((k for k in 크기_키워드 if re.search(rf"\({k}\)", option)), None)
         꼭지 = next((k for k in 꼭지_키워드 if k in option), None)
-        parts = [p for p in [품종, 형태, 크기, 꼭지] if p]
+        무게 = extract_weight(option)
+        parts = [p for p in [품종, 형태, 크기 if not (형태 == "다진마늘") else None, 꼭지, 무게] if p]
         base = " ".join(parts)
 
     if any(k in option for k in 업소용_키워드):
@@ -77,7 +78,8 @@ def calculate_quantity(option, base_qty):
     option = str(option)
     if "무뼈닭발" in option:
         weight = extract_weight(option)
-        return int((weight * 1000 / 200) * base_qty) if weight > 0 else base_qty
+        grams = int(weight.replace("kg", "")) * 1000 if "kg" in weight else 0
+        return int((grams / 200) * base_qty) if grams > 0 else base_qty
     elif "마늘빠삭이" in option:
         return base_qty
     else:
@@ -139,6 +141,6 @@ if uploaded_files:
         st.download_button(
             label="📥 최종 패킹리스트 다운로드",
             data=output_final.getvalue(),
-            file_name="최종_패킹리스트_v61.xlsx",
+            file_name="최종_패킹리스트_v62.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
