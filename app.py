@@ -4,15 +4,14 @@ import pandas as pd
 import re
 import io
 
-st.set_page_config(page_title="마늘귀신 자동 패킹리스트 시스템 v5.3", layout="wide")
-st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v5.3")
+st.set_page_config(page_title="마늘귀신 자동 패킹리스트 시스템 v5.4", layout="wide")
+st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v5.4")
 
 설정 = {
     "품종": ["육쪽", "대서"],
     "형태": ["다진마늘", "깐마늘", "통마늘", "무뼈닭발", "마늘빠삭이", "마늘쫑"],
     "크기": ["특", "대", "중", "소"],
-    "꼭지": ["꼭지제거", "꼭지포함"],
-    "업소용": ["업소용", "영업용", "업용", "대용량"]
+    "꼭지": ["꼭지제거", "꼭지포함"]
 }
 
 카테고리_정의 = {
@@ -52,7 +51,7 @@ def extract_weight(text):
 
 def parse_option(option):
     if pd.isna(option):
-        return None, 1, 1000, None, None, None
+        return None, 1, 1000, None, False, None
 
     original_text = str(option).strip()
     text = original_text.lower().replace(" ", "")
@@ -60,7 +59,6 @@ def parse_option(option):
     형태 = next((f for f in 설정["형태"] if f in text), None)
     크기 = next((k for k in 설정["크기"] if k in text), None)
     꼭지 = next((k for k in 설정["꼭지"] if k in text), None)
-    is_업소용 = any(k in text for k in 설정["업소용"])
     category = detect_category(text)
 
     if 꼭지 == "꼭지포함":
@@ -70,13 +68,12 @@ def parse_option(option):
     포장수량_match = re.search(r'[x×]\s*(\d+)', original_text)
     포장수량 = int(포장수량_match.group(1)) if 포장수량_match else 1
 
+    is_업소용 = category in ["마늘", "마늘쫑"] and 단위무게 >= 5000
+
     if category == "무뼈닭발":
         total_weight = extract_weight(original_text)
         count_match = re.search(r'(\d+)\s*팩', original_text)
-        if count_match:
-            pack_count = int(count_match.group(1))
-        else:
-            pack_count = total_weight // 200
+        pack_count = int(count_match.group(1)) if count_match else total_weight // 200
         정제명 = f"무뼈닭발 {pack_count}팩"
         패킹표기 = "무뼈닭발"
 
@@ -84,62 +81,16 @@ def parse_option(option):
         count_match = re.search(r'(\d+)\s*개입', original_text)
         if not count_match:
             count_match = re.search(r'\(\s*\d+\s*g\s*[x×]\s*(\d+)\s*개?\s*\)', original_text.lower())
-        if count_match:
-            count = count_match.group(1) + "개입"
-        else:
-            count = "10개입"
+        count = count_match.group(1) + "개입" if count_match else "10개입"
         정제명 = f"마늘빠삭이 {count}".strip()
         패킹표기 = "마늘빠삭이"
 
     else:
         parts = [품종, 형태, None if 형태 == "다진마늘" else 크기, 꼭지, f"{int(단위무게/1000)}kg"]
         정제명 = " ".join([p for p in parts if p])
+        if is_업소용:
+            정제명 = "** 업 소 용 ** " + 정제명
         패킹표기 = 정제명
-
-    if is_업소용:
-        정제명 = "** 업 소 용 ** " + 정제명
-
-    return 정제명, 포장수량, 단위무게, category, is_업소용, 패킹표기
-
-    original_text = str(option).strip()
-    text = original_text.lower().replace(" ", "")
-    품종 = next((p for p in 설정["품종"] if p in text), None)
-    형태 = next((f for f in 설정["형태"] if f in text), None)
-    크기 = next((k for k in 설정["크기"] if k in text), None)
-    꼭지 = next((k for k in 설정["꼭지"] if k in text), None)
-    is_업소용 = any(k in text for k in 설정["업소용"])
-    category = detect_category(text)
-
-    단위무게 = extract_weight(original_text)
-    포장수량_match = re.search(r'[x×]\s*(\d+)', original_text)
-    포장수량 = int(포장수량_match.group(1)) if 포장수량_match else 1
-
-    if category == "무뼈닭발":
-        total_weight = extract_weight(original_text)
-        count_match = re.search(r'(\d+)\s*팩', original_text)
-        if count_match:
-            pack_count = int(count_match.group(1))
-        else:
-            pack_count = total_weight // 200  # 무조건 내림 처리
-        정제명 = f"무뼈닭발 {pack_count}팩"
-        패킹표기 = "무뼈닭발"
-    elif category == "마늘빠삭이":
-        count_match = re.search(r'(\d+)\s*개입', original_text)
-        if not count_match:
-            count_match = re.search(r'\(\s*\d+\s*g\s*[x×]\s*(\d+)\s*개?\s*\)', original_text.lower())
-        if count_match:
-            count = count_match.group(1) + "개입"
-        else:
-            count = "10개입"
-        정제명 = f"마늘빠삭이 {count}".strip()
-        패킹표기 = "마늘빠삭이"
-    else:
-        parts = [품종, 형태, None if 형태 == "다진마늘" else 크기, 꼭지, f"{int(단위무게/1000)}kg"]
-        정제명 = " ".join([p for p in parts if p])
-        패킹표기 = 정제명
-
-    if is_업소용:
-        정제명 = "** 업 소 용 ** " + 정제명
 
     return 정제명, 포장수량, 단위무게, category, is_업소용, 패킹표기
 
@@ -196,9 +147,6 @@ if uploaded_files:
             grouped[key] = grouped.get(key, 0) + qty
 
         df_summary = pd.DataFrame(
-            [(unit, opt, round(qty)) for (opt, unit), qty in grouped.items()],
-            columns=["단위", "정제된 옵션명", "수량"]
-        )
             [(opt, unit, round(qty)) for (opt, unit), qty in grouped.items()],
             columns=["정제된 옵션명", "단위", "수량"]
         )
