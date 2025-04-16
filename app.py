@@ -4,8 +4,8 @@ import pandas as pd
 import re
 import io
 
-st.set_page_config(page_title="🧄 마늘귀신 자동 패킹리스트 시스템 v6.2", layout="wide")
-st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v6.2")
+st.set_page_config(page_title="🧄 마늘귀신 자동 패킹리스트 시스템 v6.3", layout="wide")
+st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v6.3")
 
 uploaded_files = st.file_uploader("📤 발주서를 업로드하세요 (.xlsx)", type=["xlsx"], accept_multiple_files=True)
 
@@ -17,27 +17,27 @@ uploaded_files = st.file_uploader("📤 발주서를 업로드하세요 (.xlsx)"
 
 def find_column(df, candidates):
     for col in df.columns:
-        col_clean = col.replace(" ", "").lower()
         for c in candidates:
-            if c in col_clean:
+            if c in col.replace(" ", "").lower():
                 return col
     return None
 
 def extract_weight(text):
     try:
         text = str(text)
-        main_text = re.split(r'\(', text)[0]
-        first_match = re.search(r'(\d+(\.\d+)?)(kg|g)', main_text, flags=re.IGNORECASE)
-        if first_match:
-            value, unit = first_match.groups()[0], first_match.groups()[-1]
-            return f"{int(float(value))}kg" if unit.lower() == "kg" else f"{int(float(value)/1000)}kg"
         total_match = re.search(r'총\s*(\d+(\.\d+)?)(kg|g)', text, flags=re.IGNORECASE)
         if total_match:
             value, unit = total_match.groups()[0], total_match.groups()[-1]
             return f"{int(float(value))}kg" if unit.lower() == "kg" else f"{int(float(value)/1000)}kg"
-        weights = re.findall(r'(\d+(?:\.\d+)?)(kg|g)', text, flags=re.IGNORECASE)
-        if weights:
-            value, unit = weights[-1]
+        parts = re.split(r'[()\[\]]', text)
+        outside = parts[0]
+        match = re.search(r'(\d+(\.\d+)?)(kg|g)', outside, flags=re.IGNORECASE)
+        if match:
+            value, unit = match.groups()[0], match.groups()[-1]
+            return f"{int(float(value))}kg" if unit.lower() == "kg" else f"{int(float(value)/1000)}kg"
+        all_matches = re.findall(r'(\d+(\.\d+)?)(kg|g)', text, flags=re.IGNORECASE)
+        if all_matches:
+            value, unit = all_matches[-1]
             return f"{int(float(value))}kg" if unit.lower() == "kg" else f"{int(float(value)/1000)}kg"
     except:
         return ""
@@ -58,9 +58,13 @@ def refine_option(option):
     is_bbasaki = "마늘빠삭이" in option
 
     if is_dakbal:
-        base = "무뼈닭발"
+        pack_match = re.search(r'(\d+)\s*팩', option)
+        count = pack_match.group(1) + "팩" if pack_match else ""
+        base = f"무뼈닭발 {count}".strip()
     elif is_bbasaki:
-        base = "마늘빠삭이"
+        pcs_match = re.search(r'(\d+)\s*(개입|개)', option)
+        count = pcs_match.group(1) + "개입" if pcs_match else ""
+        base = f"마늘빠삭이 {count}".strip()
     else:
         품종 = next((k for k in 품종_키워드 if k in option), None)
         형태 = next((k for k in 형태_키워드 if k in option), None)
@@ -76,10 +80,13 @@ def refine_option(option):
 
 def calculate_quantity(option, base_qty):
     option = str(option)
+    weight_str = extract_weight(option).replace("kg", "")
+    try:
+        weight = float(weight_str)
+    except:
+        weight = 0
     if "무뼈닭발" in option:
-        weight = extract_weight(option)
-        grams = int(weight.replace("kg", "")) * 1000 if "kg" in weight else 0
-        return int((grams / 200) * base_qty) if grams > 0 else base_qty
+        return int((weight * 1000 / 200) * base_qty) if weight > 0 else base_qty
     elif "마늘빠삭이" in option:
         return base_qty
     else:
@@ -141,6 +148,6 @@ if uploaded_files:
         st.download_button(
             label="📥 최종 패킹리스트 다운로드",
             data=output_final.getvalue(),
-            file_name="최종_패킹리스트_v62.xlsx",
+            file_name="최종_패킹리스트_v63.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
