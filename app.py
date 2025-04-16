@@ -4,8 +4,8 @@ import pandas as pd
 import re
 import io
 
-st.set_page_config(page_title="🧄 마늘귀신 자동 패킹리스트 시스템 v5.5", layout="wide")
-st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v5.5")
+st.set_page_config(page_title="🧄 마늘귀신 자동 패킹리스트 시스템 v6.1", layout="wide")
+st.title("🧄 마늘귀신 자동 패킹리스트 시스템 v6.1")
 
 uploaded_files = st.file_uploader("📤 발주서를 업로드하세요 (.xlsx)", type=["xlsx"], accept_multiple_files=True)
 
@@ -31,12 +31,10 @@ def extract_weight(text):
         if first_match:
             value, unit = first_match.groups()[0], first_match.groups()[-1]
             return float(value) if unit.lower() == "kg" else float(value) / 1000
-
         total_match = re.search(r'총\s*(\d+(\.\d+)?)(kg|g)', text, flags=re.IGNORECASE)
         if total_match:
             value, unit = total_match.groups()[0], total_match.groups()[-1]
             return float(value) if unit.lower() == "kg" else float(value) / 1000
-
         weights = re.findall(r'(\d+(?:\.\d+)?)(kg|g)', text, flags=re.IGNORECASE)
         if weights:
             value, unit = weights[-1]
@@ -55,36 +53,42 @@ def extract_unit(option):
 
 def refine_option(option):
     option = str(option)
-    result = []
     is_dajin = "다진마늘" in option
+    is_dakbal = "무뼈닭발" in option
+    is_bbasaki = "마늘빠삭이" in option
 
-    품종 = next((k for k in 품종_키워드 if k in option), None)
-    if 품종: result.append(품종)
-
-    형태 = next((k for k in 형태_키워드 if k in option), None)
-    if 형태: result.append(형태)
-
-    if not is_dajin:
-        크기 = next((k for k in 크기_키워드 if re.search(rf"\({k}\)", option)), None)
-        if 크기: result.append(크기)
-
-    꼭지 = next((k for k in 꼭지_키워드 if k in option), None)
-    if 꼭지: result.append(꼭지)
-
-    무게 = extract_weight(option)
-    if 무게 > 0:
-        result.append(f"{무게}kg")
+    if is_dakbal:
+        base = "무뼈닭발"
+    elif is_bbasaki:
+        base = "마늘빠삭이"
+    else:
+        품종 = next((k for k in 품종_키워드 if k in option), None)
+        형태 = next((k for k in 형태_키워드 if k in option), None)
+        크기 = next((k for k in 크기_키워드 if re.search(rf"\({k}\)", option)), None) if not is_dajin else None
+        꼭지 = next((k for k in 꼭지_키워드 if k in option), None)
+        parts = [p for p in [품종, 형태, 크기, 꼭지] if p]
+        base = " ".join(parts)
 
     if any(k in option for k in 업소용_키워드):
-        return "** 업 소 용 ** " + " ".join(result)
+        return "** 업 소 용 ** " + base
+    return base
 
-    return " ".join(result)
+def calculate_quantity(option, base_qty):
+    option = str(option)
+    if "무뼈닭발" in option:
+        weight = extract_weight(option)
+        return int((weight * 1000 / 200) * base_qty) if weight > 0 else base_qty
+    elif "마늘빠삭이" in option:
+        return base_qty
+    else:
+        return base_qty
 
 def generate_filename(file):
     name = file.name.replace(".xlsx", "")
     return f"정제_{name}.xlsx"
 
-final_list = []
+all_refined = []
+packing_items = []
 
 if uploaded_files:
     for file in uploaded_files:
@@ -97,15 +101,16 @@ if uploaded_files:
             if option_col and qty_col:
                 df["정제옵션"] = df[option_col].apply(refine_option)
                 df["단위"] = df[option_col].apply(extract_unit)
-                df["정제무게"] = df[option_col].apply(extract_weight)
-                df["총중량"] = df["정제무게"] * df[qty_col]
-                final_list.append(df[["단위", "정제옵션", qty_col, "총중량"]])
-                st.dataframe(df[[option_col, qty_col, "정제옵션", "정제무게", "총중량"]])
+                df["수량계산"] = df.apply(lambda x: calculate_quantity(x[option_col], x[qty_col]), axis=1)
 
+                refined = df.copy()
+                refined[option_col] = df["정제옵션"]
+                all_refined.append(refined)
+
+                packing_items.append(df[["단위", "정제옵션", "수량계산"]])
                 output = io.BytesIO()
                 with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-                    df.to_excel(writer, index=False, sheet_name="정제발주서")
-
+                    refined.to_excel(writer, index=False, sheet_name="정제발주서")
                 st.download_button(
                     label=f"📥 {file.name} - 정제 발주서 다운로드",
                     data=output.getvalue(),
@@ -117,11 +122,13 @@ if uploaded_files:
         except Exception as e:
             st.error(f"❌ 오류 발생: {e}")
 
-    if final_list:
-        combined_df = pd.concat(final_list, ignore_index=True)
-        grouped = combined_df.groupby(["단위", "정제옵션"]).agg(
-            총수량=pd.NamedAgg(column=qty_col, aggfunc="sum")
-        ).reset_index()
+    if packing_items:
+        combined_df = pd.concat(packing_items, ignore_index=True)
+        combined_df["정제옵션패킹"] = combined_df["정제옵션"].apply(
+            lambda x: "무뼈닭발" if "무뼈닭발" in x else ("마늘빠삭이" if "마늘빠삭이" in x else x)
+        )
+        grouped = combined_df.groupby(["단위", "정제옵션패킹"]).agg(총수량=pd.NamedAgg(column="수량계산", aggfunc="sum")).reset_index()
+        grouped.columns = ["단위", "정제옵션", "총수량"]
 
         st.subheader("📦 최종 합산 패킹리스트")
         st.dataframe(grouped)
@@ -132,6 +139,6 @@ if uploaded_files:
         st.download_button(
             label="📥 최종 패킹리스트 다운로드",
             data=output_final.getvalue(),
-            file_name="최종_패킹리스트_v55.xlsx",
+            file_name="최종_패킹리스트_v61.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
