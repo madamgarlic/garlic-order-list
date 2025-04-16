@@ -68,13 +68,22 @@ def parse_option(option):
     포장수량 = int(포장수량_match.group(1)) if 포장수량_match else 1
 
     if category == "무뼈닭발":
+        total_weight = extract_weight(original_text)
         count_match = re.search(r'(\d+)\s*팩', original_text)
-        count = count_match.group(1) + "팩" if count_match else ""
-        정제명 = f"무뼈닭발 {count}".strip()
+        if count_match:
+            pack_count = int(count_match.group(1))
+        else:
+            pack_count = total_weight // 200  # 무조건 내림 처리
+        정제명 = f"무뼈닭발 {pack_count}팩"
         패킹표기 = "무뼈닭발"
     elif category == "마늘빠삭이":
         count_match = re.search(r'(\d+)\s*개입', original_text)
-        count = count_match.group(1) + "개입" if count_match else ""
+        if not count_match:
+            count_match = re.search(r'\(\s*\d+\s*g\s*[x×]\s*(\d+)\s*개?\s*\)', original_text.lower())
+        if count_match:
+            count = count_match.group(1) + "개입"
+        else:
+            count = "10개입"
         정제명 = f"마늘빠삭이 {count}".strip()
         패킹표기 = "마늘빠삭이"
     else:
